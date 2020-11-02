@@ -9,20 +9,21 @@ from elasticsearch.helpers import bulk
 import tensorflow.compat.v1 as tf
 import tensorflow_hub as hub
 
+import common
 ##### INDEXING #####
 
 def index_data():
     print("Creating the 'posts' index.")
-    client.indices.delete(index=INDEX_NAME, ignore=[404])
+    client.indices.delete(index=common.INDEX_NAME, ignore=[404])
 
-    with open(INDEX_FILE) as index_file:
+    with open(common.INDEX_FILE) as index_file:
         source = index_file.read().strip()
-        client.indices.create(index=INDEX_NAME, body=source)
+        client.indices.create(index=common.INDEX_NAME, body=source)
 
     docs = []
     count = 0
 
-    with open(DATA_FILE) as data_file:
+    with open(common.DATA_FILE) as data_file:
         for line in data_file:
             line = line.strip()
 
@@ -33,7 +34,7 @@ def index_data():
             docs.append(doc)
             count += 1
 
-            if count % BATCH_SIZE == 0:
+            if count % common.BATCH_SIZE == 0:
                 index_batch(docs)
                 docs = []
                 print("Indexed {} documents.".format(count))
@@ -42,7 +43,7 @@ def index_data():
             index_batch(docs)
             print("Indexed {} documents.".format(count))
 
-    client.indices.refresh(index=INDEX_NAME)
+    client.indices.refresh(index=common.INDEX_NAME)
     print("Done indexing.")
 
 def index_batch(docs):
@@ -53,7 +54,7 @@ def index_batch(docs):
     for i, doc in enumerate(docs):
         request = doc
         request["_op_type"] = "index"
-        request["_index"] = INDEX_NAME
+        request["_index"] = common.INDEX_NAME
         request["title_vector"] = title_vectors[i]
         requests.append(request)
     bulk(client, requests)
@@ -86,9 +87,9 @@ def handle_query():
 
     search_start = time.time()
     response = client.search(
-        index=INDEX_NAME,
+        index=common.INDEX_NAME,
         body={
-            "size": SEARCH_SIZE,
+            "size": common.SEARCH_SIZE,
             "query": script_query,
             "_source": {"includes": ["title", "body"]}
         }
@@ -110,19 +111,9 @@ def embed_text(text):
     vectors = session.run(embeddings, feed_dict={text_ph: text})
     return [vector.tolist() for vector in vectors]
 
-##### MAIN SCRIPT #####
 
 if __name__ == '__main__':
-    INDEX_NAME = "posts"
-    INDEX_FILE = "data/posts/index.json"
-
-    DATA_FILE = "data/posts/posts.json"
-    BATCH_SIZE = 1000
-
-    SEARCH_SIZE = 5
-
-    GPU_LIMIT = 0.5
-
+    
     print("Downloading pre-trained embeddings from tensorflow hub...")
     embed = hub.Module("https://tfhub.dev/google/universal-sentence-encoder/2")
     text_ph = tf.placeholder(tf.string)
@@ -131,7 +122,7 @@ if __name__ == '__main__':
 
     print("Creating tensorflow session...")
     config = tf.ConfigProto()
-    config.gpu_options.per_process_gpu_memory_fraction = GPU_LIMIT
+    config.gpu_options.per_process_gpu_memory_fraction = common.GPU_LIMIT
     session = tf.Session(config=config)
     session.run(tf.global_variables_initializer())
     session.run(tf.tables_initializer())
